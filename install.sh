@@ -59,12 +59,13 @@ sudo chmod 644 "$CONFIG_FILE"
 sudo chown -R "$USER_NAME":"$USER_NAME" "$CONFIG_FILE"
 
 # Download and set up the telex_aggregator binary
-sudo wget -P /usr/local/bin https://github.com/vicradon/telex_aggregator/releases/download/0.0.1/telex_aggregator
+echo "Now downloading the telex_aggregator binary..."
+sudo wget -q --show-progress -P /usr/local/bin https://github.com/vicradon/telex_aggregator/releases/download/0.0.1/telex_aggregator
 sudo chmod +x /usr/local/bin/telex_aggregator
 sudo chown -R $USER_NAME:$USER_NAME /usr/local/bin/telex_aggregator
 
 # Create the systemd service file
-cat << EOF | sudo tee /etc/systemd/system/telex.service
+cat << EOF | sudo tee /etc/systemd/system/telex.service > /dev/null
 [Unit]
 Description=Telex Log Aggregator Service
 After=network.target
