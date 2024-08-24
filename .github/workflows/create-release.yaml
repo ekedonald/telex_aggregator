@@ -1,0 +1,64 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Tag name for the release"
+        required: true
+        default: "v1.0.0"
+      release_name:
+        description: "Release name"
+        required: true
+        default: "Release v1.0.0"
+      release_body:
+        description: "Description of the release"
+        required: false
+        default: "Description of the release"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.20"
+
+      - name: Build binaries for Linux AMD64
+        run: GOOS=linux GOARCH=amd64 go build -o telex_aggregator-linux-amd64 ./...
+
+      - name: Build binaries for Linux ARM64
+        run: GOOS=linux GOARCH=arm64 go build -o telex_aggregator-linux-arm64 ./...
+
+      - name: Build binaries for macOS AMD64
+        run: GOOS=darwin GOARCH=amd64 go build -o telex_aggregator-darwin-amd64 ./...
+
+      - name: Build binaries for macOS ARM64
+        run: GOOS=darwin GOARCH=arm64 go build -o telex_aggregator-darwin-arm64 ./...
+
+      - name: Build binaries for Windows AMD64
+        run: GOOS=windows GOARCH=amd64 go build -o telex_aggregator-windows-amd64.exe ./...
+
+      - name: Include install.sh script
+        run: cp install.sh ./install.sh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.inputs.tag_name }}
+          name: ${{ github.event.inputs.release_name }}
+          body: ${{ github.event.inputs.release_body }}
+          files: |
+            telex_aggregator-linux-amd64
+            telex_aggregator-linux-arm64
+            telex_aggregator-darwin-amd64
+            telex_aggregator-darwin-arm64
+            telex_aggregator-windows-amd64.exe
+            install.sh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

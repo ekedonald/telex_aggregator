@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -42,6 +43,7 @@ type Config struct {
 	} `yaml:"clients"`
 
 	Targets []struct {
+		Filter      string   `yaml:"filter"`
 		Application string   `yaml:"application"`
 		Paths       []string `yaml:"paths"`
 	} `yaml:"targets"`
@@ -50,22 +52,17 @@ type Config struct {
 }
 
 func initDB() (*sql.DB, error) {
-	// Define the database path
 	dbPath := "/var/lib/telex/file_monitor.db"
-
-	// Ensure the directory exists
 	err := os.MkdirAll("/var/lib/telex", 0755)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create directory: %v", err)
 	}
 
-	// Open the SQLite database
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %v", err)
 	}
 
-	// Create the table if it doesn't exist
 	query := `
 	CREATE TABLE IF NOT EXISTS file_mod_times (
 		file_path TEXT PRIMARY KEY,
@@ -90,64 +87,62 @@ func (li LogInfo) ToWebhookPayload() WebhookPayload {
 }
 
 func main() {
-	// Initialize the SQLite database
 	db, err := initDB()
 	if err != nil {
 		log.Fatalf("Error initializing database: %v", err)
 	}
 	defer db.Close()
 
-	// Read the configuration file
 	filePath := "/etc/telex/config.yaml"
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		log.Fatalf("Error reading file: %v", err)
 	}
 
-	// Unmarshal the YAML content into the Config struct
 	config := Config{}
 	err = yaml.Unmarshal(content, &config)
 	if err != nil {
 		log.Fatalf("Error unmarshalling YAML: %v", err)
 	}
 
-	// Parse the interval from the configuration file
 	interval, err := time.ParseDuration(config.Interval)
 	if err != nil {
 		log.Fatalf("Error parsing interval: %v", err)
 	}
 
-	// Start monitoring log files for each target
 	for _, target := range config.Targets {
 		for _, path := range target.Paths {
-			// Expand glob patterns
 			matchedFiles, err := filepath.Glob(path)
 			if err != nil {
 				log.Printf("Error with glob pattern: %v", err)
 				continue
 			}
+
+			filterRegex, err := regexp.Compile(target.Filter)
+			if err != nil {
+				log.Printf("Error compiling regex filter: %v", err)
+				continue
+			}
+
 			for _, matchedFile := range matchedFiles {
-				go monitorLogFile(db, matchedFile, config.Clients[0].WebhookURLs, target.Application, interval)
+				go monitorLogFile(db, matchedFile, config.Clients[0].WebhookURLs, target.Application, filterRegex, interval)
 			}
 		}
 	}
 
-	// Keep the main function running
 	select {}
 }
 
-func monitorLogFile(db *sql.DB, filePath string, webhookURLs []string, application string, interval time.Duration) {
+func monitorLogFile(db *sql.DB, filePath string, webhookURLs []string, application string, filterRegex *regexp.Regexp, interval time.Duration) {
 	var lastOffset int64 = 0
 	var lastModTime time.Time
 
-	// Get the current OS user
 	currentUser, err := user.Current()
 	if err != nil {
 		log.Printf("Error getting current user: %v", err)
 		return
 	}
 
-	// Retrieve the last modification time and offset from the database
 	err = db.QueryRow("SELECT last_mod_time, last_offset FROM file_mod_times WHERE file_path = ?", filePath).Scan(&lastModTime, &lastOffset)
 	if err != nil && err != sql.ErrNoRows {
 		log.Printf("Error querying last modification time and offset: %v", err)
@@ -162,7 +157,6 @@ func monitorLogFile(db *sql.DB, filePath string, webhookURLs []string, applicati
 			continue
 		}
 
-		// Check if the file has been modified since the last check
 		if fileInfo.ModTime().After(lastModTime) {
 			lastModTime = fileInfo.ModTime()
 
@@ -173,7 +167,6 @@ func monitorLogFile(db *sql.DB, filePath string, webhookURLs []string, applicati
 				continue
 			}
 
-			// Move the file pointer to the last known offset
 			_, err = file.Seek(lastOffset, io.SeekStart)
 			if err != nil {
 				log.Printf("Error seeking to last offset: %v", err)
@@ -182,15 +175,16 @@ func monitorLogFile(db *sql.DB, filePath string, webhookURLs []string, applicati
 				continue
 			}
 
-			// Create a new scanner to read the log file
 			scanner := bufio.NewScanner(file)
 			for scanner.Scan() {
 				logEntry := scanner.Text()
 
-				// Parse the log entry using additional parameters
+				if !filterRegex.MatchString(logEntry) {
+					continue
+				}
+
 				logInfo := parseLogEntry(logEntry, application, currentUser.Username, "error")
 
-				// Send the log info to the webhook
 				for _, webhookURL := range webhookURLs {
 					err = sendToWebhook(webhookURL, logInfo)
 					if err != nil {
@@ -203,18 +197,15 @@ func monitorLogFile(db *sql.DB, filePath string, webhookURLs []string, applicati
 				log.Printf("Error reading log file: %v", err)
 			}
 
-			// Update the last offset
 			lastOffset, _ = file.Seek(0, io.SeekCurrent)
 			file.Close()
 
-			// Update the last modification time and offset in the database
 			_, err = db.Exec("INSERT OR REPLACE INTO file_mod_times (file_path, last_mod_time, last_offset) VALUES (?, ?, ?)", filePath, lastModTime, lastOffset)
 			if err != nil {
 				log.Printf("Error updating last modification time and offset: %v", err)
 			}
 		}
 
-		// Sleep for the defined interval before checking again
 		time.Sleep(interval)
 	}
 }
