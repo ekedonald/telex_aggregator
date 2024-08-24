@@ -20,17 +20,17 @@ import (
 )
 
 type WebhookPayload struct {
-	EventName  string `json:"event_name"`
-	Username   string `json:"username"`
-	ActionType string `json:"action_type"`
-	Status     string `json:"status"`
+	EventName string `json:"event_name"`
+	Username  string `json:"username"`
+	Message   string `json:"message"`
+	Status    string `json:"status"`
 }
 
 type LogInfo struct {
-	EventName  string
-	Username   string
-	ActionType string
-	Status     string
+	EventName string
+	Username  string
+	Message   string
+	Status    string
 }
 
 const (
@@ -79,10 +79,10 @@ func initDB() (*sql.DB, error) {
 
 func (li LogInfo) ToWebhookPayload() WebhookPayload {
 	return WebhookPayload{
-		EventName:  li.EventName,
-		Username:   li.Username,
-		ActionType: li.ActionType,
-		Status:     li.Status,
+		EventName: li.EventName,
+		Username:  li.Username,
+		Message:   li.Message,
+		Status:    li.Status,
 	}
 }
 
@@ -212,10 +212,10 @@ func monitorLogFile(db *sql.DB, filePath string, webhookURLs []string, applicati
 
 func parseLogEntry(logEntry, application, username, status string) LogInfo {
 	return LogInfo{
-		EventName:  application,
-		Username:   username,
-		ActionType: logEntry,
-		Status:     status,
+		EventName: application,
+		Username:  username,
+		Message:   logEntry,
+		Status:    status,
 	}
 }
 
