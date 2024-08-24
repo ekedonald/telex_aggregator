@@ -40,6 +40,7 @@ cat >> "$TEMP_CONFIG_FILE" << EOL
 
 targets:
   - application: $job_name
+    filter:
     paths: 
 EOL
 

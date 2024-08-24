@@ -27,7 +27,7 @@ Enter Log Directory Paths (separate multiple paths with space): /home/$USER/tele
 
 ## Running
 
-The application runs as a systemd service in the background and sends logs when new logs come. You can configure the interval by modifying the `interval` field on the config file. The default is 30 seconds. This is the default config file content:
+The application runs as a systemd service in the background and sends logs when new logs come. You can configure the interval by modifying the `interval` field on the config file. The default is 30 seconds. You can also set a filter for each target so that This is the default config file content:
 
 ```
 clients:
@@ -36,6 +36,7 @@ clients:
 
 targets:
   - application: Telex Backend Logs
+    filter: \b(400|401|403|404|405|422|429|500|501|502|503|504)\b # filter http error codes
     paths:
       - /home/someguy/telex_be/logs/app.log
 
